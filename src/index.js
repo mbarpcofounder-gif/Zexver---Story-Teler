@@ -16,6 +16,7 @@ const client = new Client({
 });
 
 const STORY_CHANNEL_ID = '1561460412371701790';
+const PANEL_DELAY = 10 * 60 * 1000;
 
 const STORIES = [
   {
@@ -77,10 +78,14 @@ const STORIES = [
       'The doctor finally calls you in and smiles as if you have met many times before.',
       '"Excellent," he says, checking a file. "You are finally ready for the next stage."'
     ].join('\n\n'),
-    image: 'https://images.unsplash.com/photo-1511174511562-5f7f18b874f8?auto=format&fit=crop&w=1200&q=85',
+    image: 'https://images.unsplash.com/photo-1511174511562-5f7f18b874f8?auto=format&fit=crop&w=1200&q=85&sat=-100&exp=-45',
     previous: 'Hotel with Aunt'
   }
 ];
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function createStoryEmbed(story) {
   const embed = new EmbedBuilder()
@@ -120,14 +125,17 @@ async function publishStoryPanels() {
   const channel = await client.channels.fetch(STORY_CHANNEL_ID);
 
   if (!channel || !channel.isTextBased() || !channel.messages) {
-    throw new Error('The configured story channel is missing or is not a text channel.');
+    throw new Error(
+      'The configured story channel is missing or is not a text channel.'
+    );
   }
 
-  // Find existing panels so restarts normally update them instead of duplicating them.
-  const recentMessages = await channel.messages.fetch({ limit: 100 });
-
-  for (const story of STORIES) {
+  for (let i = 0; i < STORIES.length; i++) {
+    const story = STORIES[i];
     const marker = `STORY_TELLER_PANEL:${story.id}`;
+
+    // Fetch messages again so previously sent panels are detected.
+    const recentMessages = await channel.messages.fetch({ limit: 100 });
 
     const existingMessage = recentMessages.find(message =>
       message.author.id === client.user.id &&
@@ -146,7 +154,16 @@ async function publishStoryPanels() {
       await channel.send(payload);
       console.log(`Published story panel: ${story.title}`);
     }
+
+    if (i < STORIES.length - 1) {
+      console.log(
+        `Waiting 10 minutes before the next panel (${i + 2}/${STORIES.length}).`
+      );
+      await sleep(PANEL_DELAY);
+    }
   }
+
+  console.log('All story panels have been published or updated.');
 }
 
 client.once(Events.ClientReady, async readyClient => {
@@ -154,7 +171,6 @@ client.once(Events.ClientReady, async readyClient => {
 
   try {
     await publishStoryPanels();
-    console.log('All story panels have been published or updated.');
   } catch (error) {
     console.error('Could not publish the story panels:', error);
   }
